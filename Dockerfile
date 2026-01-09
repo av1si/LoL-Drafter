@@ -13,7 +13,7 @@ COPY . /app
 WORKDIR /app
 
 # Устанавливаем зависимости
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirments.txt
 
 # Собираем статику, применяем миграции и запускаем Gunicorn
 CMD python manage.py collectstatic --noinput && \
