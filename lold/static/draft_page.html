@@ -222,37 +222,24 @@
     </div>
 
     <script>
-        // Функция присоединения к стороне
-        async function joinSide(side) {
-            const userUID = localStorage.getItem("user_uid");
-            const roomID = window.location.pathname.split('/')[2]; // из /room/abc123/
-
-            try {
-                const response = await fetch(`/room/${roomID}/join/`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: JSON.stringify({ side: side, user_uid: userUID })
-                });
-
-                if (response.ok) {
-                    // Успешно — скрываем кнопки
-                    document.getElementById('sideSelection').style.display = 'none';
-                    // Можно показать сообщение или обновить состояние
-                    console.log(`Присоединились к стороне: ${side}`);
-                } else {
-                    const error = await response.json();
-                    alert('Ошибка: ' + (error.error || 'Не удалось присоединиться'));
-                }
-            } catch (err) {
-                console.error(err);
-                alert('Ошибка сети. Проверьте подключение.');
+        let i = 0;
+        localStorage.setItem('i', i);
+        // Генерация или получение UID пользователя
+        function getUserUID() {
+            let uid = localStorage.getItem('user_uid');
+            if (!uid) {
+                uid = 'user_' + ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+                    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+                ).substring(0, 8);
+                localStorage.setItem('user_uid', uid);
             }
+            return uid;
         }
 
-        // Вспомогательная функция для CSRF (если используешь POST)
+        window.USER_UID = getUserUID();
+        console.log('Ваш UID:', window.USER_UID);
+
+        // Функция получения CSRF-токена
         function getCookie(name) {
             let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
@@ -268,32 +255,66 @@
             return cookieValue;
         }
 
-        let roomID = window.location.pathname.split('/')[2]; // из /room/abc123/
+        // Функция присоединения к стороне
+        async function joinSide(side) {
+            const userUID = window.USER_UID;
+            const roomID = window.location.pathname.split('/')[2];
+
+            try {
+                const response = await fetch(`/room/${roomID}/join/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ side: side, user_uid: userUID })
+                });
+
+                if (response.ok) {
+                    // Скрываем выбор стороны
+                    document.getElementById('sideSelection').style.display = 'none';
+
+                    // Создаём и показываем сообщение об ожидании
+                    const waitingMessage = document.createElement('div');
+                    waitingMessage.id = 'waitingMessage';
+                    waitingMessage.innerHTML = `
+                        <h2 style="color: #f8f9fa; margin-top: 30px; font-size: 1.8rem;">Ожидание второго игрока…</h2>
+                        <p style="color: #a0aec0; margin-top: 10px;">Как только оба капитана подключатся, начнётся драфт.</p>
+                    `;
+                    document.querySelector('.container').appendChild(waitingMessage);
+
+                    console.log(`Присоединились к стороне: ${side}`);
+                } else {
+                    const error = await response.json();
+                    alert('Ошибка: ' + (error.error || 'Не удалось присоединиться'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Ошибка сети. Проверьте подключение.');
+            }
+        }
+
+        // Опрос статуса комнаты
+        const roomID = window.location.pathname.split('/')[2];
 
         async function checkRoomStatus() {
             try {
                 const response = await fetch(`/room/${roomID}/status/`);
                 const data = await response.json();
-                console.log(data)
+
                 if (data.ready) {
                     console.log("Оба капитана присоединились! Переключаемся на драфт...");
-                    // Вариант 1: перезагрузить страницу (она сама отрендерит index.html)
-                    window.location.reload();
-
-                    // Вариант 2: перейти на SPA напрямую (если index.html — React)
-                    // window.location.href = window.location.href; // то же самое
+                    window.location.reload(); // или перейти на /room/abc123/
                 } else {
-                    // Повторяем опрос через 1.5 секунды
                     setTimeout(checkRoomStatus, 1500);
                 }
             } catch (error) {
                 console.error("Ошибка при проверке статуса:", error);
-                // Повторяем даже при ошибке
                 setTimeout(checkRoomStatus, 2000);
             }
         }
 
-        // Запускаем опрос сразу при загрузке страницы
+        // Запуск опроса при загрузке
         document.addEventListener("DOMContentLoaded", () => {
             console.log("Начинаем опрос статуса комнаты...");
             checkRoomStatus();

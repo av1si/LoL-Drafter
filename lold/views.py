@@ -13,7 +13,36 @@ import time
 from django.utils import timezone
 from datetime import timedelta
 from .timer2 import SimpleRoomTimer
+from .forms import ChampionSelectForm
+def champ_data():
+    icons_dir = os.path.join(settings.BASE_DIR, 'static', 'icons')
+    champion_data = []
 
+    if os.path.exists(icons_dir):
+        for filename in os.listdir(icons_dir):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.svg')):
+                name = os.path.splitext(filename)[0]
+                icon_url = static(f'icons/{filename}')
+                champion_data.append({'name': name, 'icon_url': icon_url})
+        champion_data.sort(key=lambda x: x['name'])
+    return champion_data
+
+def get_champs(request):
+    icons_dir = os.path.join(settings.STATIC_ROOT or settings.BASE_DIR, 'icons')
+    champions = []
+    
+    if os.path.exists(icons_dir):
+        for filename in os.listdir(icons_dir):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.svg')):
+                name = os.path.splitext(filename)[0]
+                icon_url = f"/static/icons/" + filename
+                champions.append({
+                    'name': name,
+                    'icon_url': icon_url
+                })
+        champions.sort(key=lambda x: x['name'])
+    print(champions)
+    return JsonResponse({'data': champions})  # ← список объектов
 def CreateRoom(request):
     room = DraftRoom.objects.create()
     return redirect('draft_room', room_id=room.room_id)
@@ -30,7 +59,14 @@ def draft_room(request, room_id):
         room.cur_turn = 'blue'
         room.turn_index = 1
         room.save()
-        return render(request, "index_test.html")
+        champion_data = champ_data()
+        
+        form = ChampionSelectForm(champion_data)
+        return render(request, 'index_test.html', {
+        'form': form,
+        'champion_data': champion_data,  # ← передаём отдельно для шаблона
+        'room_id': room_id,
+    })
     else:
         print("NotApproved")
         return render(request, 'draft_page.html')
@@ -76,17 +112,19 @@ def update(_, room_id):
     room = DraftRoom.objects.get(room_id=room_id)
     bans, _ = BanPhase.objects.get_or_create(room=room)
     picks, _ = PickPhase.objects.get_or_create(room=room)
+    cur_Turn = room.blue_captain if room.cur_turn == 'blue'  else room.red_captain
     data = {
+        't_ind': room.turn_index,
         'time': SimpleRoomTimer.get_time_left(room_id=room_id),
-        'cur_Turn': room.cur_turn,
+        'cur_Turn': cur_Turn,
         'status': room.status,
         'red_bans': bans.champions_Red_team,
         'blue_bans': bans.champions_Blue_team,
         'red_picks': picks.champions_Red_team,
         'blue_piks': picks.champions_Blue_team
     }
-    if len(bans.champions_Blue_team) == 5 and len(bans.champions_Red_team) == 5:
-        room.status = 'pick_phase'
+    if len(picks.champions_Blue_team) == 5 and len(picks.champions_Red_team) == 5:
+        room.status = 'end'
         room.save()
     return JsonResponse(data=data)
 @require_http_methods(["POST"])
@@ -111,20 +149,23 @@ def action(request, room_id):
     
     if room.turn_index == 0:
         return JsonResponse({"status": 'error'}, status=500)
-    if room.turn_index in (1, 2, 3, 4, 5, 6, 13, 14, 15, 16):
-        room.status = 'ban_phase'
-    if room.turn_index in (7, 8, 9, 10, 11, 12):
-        room.status = 'pick_phase'
-
+    if room.status == 'end':
+        pass
+    else:
+        if room.turn_index in (1, 2, 3, 4, 5, 6, 7, 13, 14, 15, 16, 17):
+            room.status = 'ban_phase'
+        if room.turn_index in (8, 9, 10, 11, 12, 13, 18, 19, 20):
+                room.status = 'pick_phase'
+    
     match (room.turn_index):
         case 1:
             room.cur_turn = 'blue'  # ban
         case 2:
             room.cur_turn = 'red'   # ban
         case 3:
-            room.cur_turn = 'red'   # ban
+            room.cur_turn = 'blue'   # ban
         case 4:
-            room.cur_turn = 'blue'  # ban
+            room.cur_turn = 'red'   # ban
         case 5:
             room.cur_turn = 'blue'  # ban
         case 6:
@@ -146,9 +187,9 @@ def action(request, room_id):
         case 14:
             room.cur_turn = 'red'   # ban
         case 15:
-            room.cur_turn = 'red'   # ban
-        case 16:
             room.cur_turn = 'blue'  # ban
+        case 16:
+            room.cur_turn = 'red'   # ban
         case 17:
             room.cur_turn = 'red'   # pick
         case 18:
@@ -156,9 +197,8 @@ def action(request, room_id):
         case 19:
             room.cur_turn = 'blue'  # pick
         case 20:
-            room.cur_turn = 'red'
-        case 21:
-            room.status = 'end'
+            room.cur_turn = 'red'   # pick
+        
     room.save()
     response_data = {"status": room.status}
     if room.status == 'ban_phase':
@@ -207,5 +247,3 @@ def action(request, room_id):
     
     else:
         return JsonResponse({"status": room.status, "message": "Room is not in active phase"})
-
-

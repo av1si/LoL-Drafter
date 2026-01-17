@@ -1,4 +1,3 @@
-# Dockerfile
 FROM python:3.11-slim
 
 # Устанавливаем системные зависимости
@@ -12,10 +11,11 @@ COPY . /app
 # Устанавливаем рабочую директорию — корень проекта, где лежит manage.py
 WORKDIR /app
 
-# Устанавливаем зависимости
-RUN pip install --no-cache-dir -r requirments.txt
+# Устанавливаем зависимости (обратите внимание на правильное имя файла!)
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Собираем статику, применяем миграции и запускаем Gunicorn
-CMD python manage.py collectstatic --noinput && \
+# Собираем статику и запускаем Gunicorn
+CMD python manage.py makemigrations --noinput && \
     python manage.py migrate --noinput && \
+    python manage.py collectstatic --noinput && \
     gunicorn --bind 0.0.0.0:8000 loldraft.wsgi:application
